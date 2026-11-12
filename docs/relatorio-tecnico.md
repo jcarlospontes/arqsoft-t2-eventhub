@@ -301,25 +301,25 @@ Implementamos o fluxo de inscrição paga de ponta a ponta com 4 serviços, 2 te
 
 ## 10. Parte 3 — Validação
 
-Os 14 testes automatizados passaram em 50 s. O cenário crítico também passou: 200 tentativas simultâneas para 30 vagas resultaram em exatamente 30 confirmações e 170 recusas 409, sem nenhuma vaga presa. Os testes chamam as APIs de fora, como um cliente faria (pytest tests -v -s). A saída completa está em evidencias/resultado-testes.txt.
+Os 14 testes automatizados passaram em 49 s. O cenário crítico também passou: 200 tentativas simultâneas para 30 vagas resultaram em exatamente 30 confirmações e 170 recusas 409, sem nenhuma vaga presa. Os testes chamam as APIs de fora, como um cliente faria (pytest tests -v -s). A saída completa está em evidencias/resultado-testes.txt.
 
 | Exigência do enunciado       | Teste                                                     | Resultado observado                                                                                                      |
 |------------------------------|-----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | Fluxo principal e estados    | Inscrição paga ponta a ponta                              | 201 CONFIRMED; pagamento APPROVED; vagas confirmed=1, reserved=0; e-mail registrado com o mesmo correlationId            |
 | Fluxo principal e estados    | Gratuita, cancelamento, idempotência, inscrição duplicada | 201 sem pagamento; cancelamento devolve a vaga; mesma Idempotency-Key devolve a mesma inscrição; segunda inscrição → 409 |
-| Concorrência                 | 200 × 30 vagas, atividade paga                            | {201: 30, 409: 170} em 1,9 s; final confirmed=30, reserved=0                                                             |
-| Concorrência                 | 200 × 30 vagas, atividade gratuita                        | {201: 30, 409: 170} em 1,5 s                                                                                             |
+| Concorrência                 | 200 × 30 vagas, atividade paga                            | {201: 30, 409: 170} em 1,2 s; final confirmed=30, reserved=0                                                             |
+| Concorrência                 | 200 × 30 vagas, atividade gratuita                        | {201: 30, 409: 170} em 1,1 s                                                                                             |
 | Falha de dependência         | Pagamento recusado                                        | 402 PAYMENT_FAILED (DECLINED); vaga volta e outra pessoa consegue se inscrever                                        |
 | Falha de dependência         | Provedor lento (5 s)                                      | 503 em 2,1 s; vaga liberada; pagamento termina como CANCELLED, nunca cobrado                                             |
 | Falha de dependência         | Notificação parada                                        | Inscrição 201 CONFIRMED; e-mail entregue quando o serviço voltou                                                         |
 | Falha de dependência         | RabbitMQ parado                                           | Inscrição 201; evento ficou na outbox e foi publicado após o retorno do broker                                           |
-| Falha de dependência         | Pagamento parado                                          | 6 respostas 503 em ≤ 0,1 s; circuito OPEN; após o retorno, HALF_OPEN → CLOSED e 201                                      |
+| Falha de dependência         | Pagamento parado                                          | 6 respostas 503: a 1ª em 2,1 s (timeout), as seguintes em até 0,3 s e, com o circuito OPEN, em 0,03 s; após o retorno, circuito CLOSED e 201                                      |
 | Integração entre tecnologias | Rastreamento por correlationId                            | Mesma requisição nos logs de Inscrição (Java), Pagamento e Notificação (Python)                                          |
 | Segurança (RN07)             | Acesso cruzado e token forjado                            | Inscrição de outra pessoa → 403; sem token ou token forjado → 401; organizador de outra organização → 403                |
 
 Trechos de log que comprovam os mecanismos (transições do circuito, outbox retida e retomada, compensação) estão em evidencias/logs-resiliencia.txt e evidencias/rastreamento-correlation-id.txt.
 
-**Ambiente da execução registrada:** serviços rodando como processos locais (PostgreSQL 16, RabbitMQ 3.12, Python 3.13, Java 21); as falhas foram simuladas parando e religando cada processo. Com Docker, os mesmos testes usam docker compose stop/start. O grupo deve repetir a execução via Compose antes da entrega e substituir os arquivos de evidência.
+**Ambiente da execução registrada:** todos os serviços em containers via Docker Compose (PostgreSQL 16, RabbitMQ 3.13, Java 21, Python 3.12); as falhas foram simuladas com docker compose stop/start, executados pelos próprios testes.
 
 **Não testado:** expiração de reserva por queda no meio da Saga (o job existe, mas o cenário exige derrubar a Inscrição entre a reserva e o pagamento).
 
@@ -333,7 +333,7 @@ Ganhamos isolamento de falhas e evolução independente onde o enunciado pedia. 
 | Eventos assíncronos (ADR-02)      | Notificação e broker fora não afetaram nenhuma inscrição               | O e-mail chega depois (consistência eventual); é preciso deduplicar e ter DLQ                             |
 | Saga com compensação (ADR-03)     | Recusa e timeout nunca deixaram vaga presa nem cobrança indevida       | Cinco estados e transições guardadas por WHERE status = …; o caso "pagou depois de expirar" exige estorno |
 | Outbox (ADR-04)                   | Nenhum evento perdido com o RabbitMQ parado                            | Atraso de até 0,5 s; entrega duplicada possível; um job a mais para operar                                |
-| Timeout + Circuit Breaker         | Com o Pagamento fora, resposta em 0,05 s em vez de travar threads      | Ajustar limiares; durante 15 s, até pagamentos que funcionariam são recusados                             |
+| Timeout + Circuit Breaker         | Com o Pagamento fora, resposta em 0,03 s em vez de travar threads      | Ajustar limiares; durante 15 s, até pagamentos que funcionariam são recusados                             |
 | Duas tecnologias                  | Contratos explícitos (OpenAPI, envelope de evento)                     | Duas toolchains, dois estilos de log, dois Dockerfiles                                                    |
 
 **Latência:** uma inscrição paga cruza 3 serviços e 2 saltos de rede síncronos. Para manter o caminho curto, a capacidade e o preço ficam numa projeção local na Inscrição e o Catálogo só é consultado na primeira vez.
