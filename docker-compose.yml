@@ -1,0 +1,103 @@
+name: eventhub
+
+x-db-env: &db-env
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: eventhub
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: eventhub
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      CATALOG_DB_PASSWORD: ${CATALOG_DB_PASSWORD}
+      REGISTRATION_DB_PASSWORD: ${REGISTRATION_DB_PASSWORD}
+      PAYMENT_DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
+      NOTIFICATION_DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+    volumes:
+      - ./infra/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d eventhub"]
+      interval: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports: ["5672:5672", "15672:15672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      retries: 20
+
+  catalog:                      # Python / FastAPI
+    build: ./catalog
+    environment:
+      <<: *db-env
+      DB_USER: catalog
+      DB_PASSWORD: ${CATALOG_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      DEMO_PASSWORD: ${DEMO_PASSWORD}
+    ports: ["8001:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  payment:                      # Python / FastAPI (inclui o provedor externo simulado)
+    build: ./payment
+    environment:
+      <<: *db-env
+      DB_USER: payment
+      DB_PASSWORD: ${PAYMENT_DB_PASSWORD}
+    ports: ["8002:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  registration:                 # Java / Spring Boot
+    build: ./registration
+    environment:
+      <<: *db-env
+      DB_USER: registration
+      DB_PASSWORD: ${REGISTRATION_DB_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      CATALOG_URL: http://catalog:8000
+      PAYMENT_URL: http://payment:8000
+      HOLD_MINUTES: ${HOLD_MINUTES}
+    ports: ["8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      catalog: { condition: service_started }
+      payment: { condition: service_started }
+
+  web:                          # Front de demonstracao + mini API Gateway (nginx)
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    ports: ["3000:80"]
+    depends_on:
+      - catalog
+      - registration
+      - payment
+      - notification
+
+  notification:                 # Python (consumidor RabbitMQ)
+    build: ./notification
+    environment:
+      <<: *db-env
+      DB_USER: notification
+      DB_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    ports: ["8003:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }

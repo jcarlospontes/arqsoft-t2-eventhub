@@ -1,0 +1,21 @@
+# Trechos de log dos mecanismos de resiliencia (registration-service, Java)
+
+## Circuit Breaker do Pagamento
+13:48:43.650 [registration] [circuit-breaker] payment: HALF_OPEN -> CLOSED
+13:49:23.878 [registration] [circuit-breaker] payment: CLOSED -> OPEN
+13:49:43.138 [registration] [circuit-breaker] payment: OPEN -> HALF_OPEN
+13:49:43.168 [registration] [circuit-breaker] payment: HALF_OPEN -> CLOSED
+
+## Transactional Outbox com o RabbitMQ fora
+13:49:16.289 [registration] [outbox] falha ao publicar, eventos permanecem na outbox: broker indisponivel (ConnectException)
+13:49:20.314 [registration] [outbox] broker disponivel novamente; publicacao retomada
+
+## Compensacao apos timeout do Pagamento
+13:47:46.534 [registration] corr=dd6a0013-2645-48dc-9671-36610698f5ee inscricao daa21ec2-7646-440f-a5e0-17cb1ac2e1f1 -> PAYMENT_FAILED (PAYMENT_UNAVAILABLE), vaga liberada
+13:47:46.571 [registration] corr=dd6a0013-2645-48dc-9671-36610698f5ee compensacao enviada ao Pagamento para daa21ec2-7646-440f-a5e0-17cb1ac2e1f1
+[payment] corr=dd6a0013-2645-48dc-9671-36610698f5ee compensacao reg=daa21ec2-7646-440f-a5e0-17cb1ac2e1f1 -> CANCELLED
+
+## Notificacao reconectando ao broker
+[notification] broker indisponivel (ConnectionClosedByBroker: (320) "CONNECTION_FORCED - broker forced connection closure with reason 'shutdown'"); nova tentativa em 3 s
+[notification] broker indisponivel (AMQPConnectionError: (AMQPConnectorSocketConnectError: ConnectionRefusedError(111, 'Connection refused'),)); nova tentativa em 3 s
+[notification] consumindo fila notification.registration

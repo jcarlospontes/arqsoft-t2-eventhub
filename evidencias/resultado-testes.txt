@@ -1,0 +1,64 @@
+# Execucao da suite de validacao - 04/11/2026 13:49
+# Ambiente: servicos rodando como processos locais (Postgres 16, RabbitMQ 3.12, Python 3.13, Java 21)
+# Falhas simuladas parando/religando o processo do servico (equivalente a docker compose stop/start)
+# Comando: pytest -v -s (pasta tests/)
+
+============================= test session starts ==============================
+platform linux -- Python 3.13.16, pytest-9.2.0, pluggy-1.7.0 -- /usr/bin/python3
+cachedir: .pytest_cache
+rootdir: eventhub/tests
+plugins: anyio-4.15.1
+collecting ... collected 14 items
+
+test_1_fluxos.py::test_login_emite_token_e_lista_atividades PASSED
+test_1_fluxos.py::test_inscricao_paga_confirmada_ponta_a_ponta 
+POST /registrations -> 201 {'id': '557efaaf-9d47-40e8-8800-fa89c8fad3d5', 'activityId': 'act-849d3f2b', 'participantId': 'part-5a35c435', 'status': 'CONFIRMED', 'amount': 50.0, 'failureReason': None, 'holdExpiresAt': None, 'correlationId': 'demo-2abfd0', 'createdAt': '2026-11-04T16:48:53.569906Z', 'updatedAt': '2026-11-04T16:48:53.599414Z'}
+Pagamento -> APPROVED corr: demo-2abfd0
+Vagas -> {'activityId': 'act-849d3f2b', 'capacity': 10, 'reserved': 0, 'confirmed': 1, 'available': 9}
+Notificacao -> {'event_id': '922b34eb-025d-4f46-a387-70f815811473', 'event_type': 'RegistrationConfirmed', 'recipient': 'part-5a35c435', 'message': 'Sua inscricao em act-849d3f2b esta confirmada.', 'correlation_id': 'demo-2abfd0', 'sent_at': '2026-11-04T16:48:53.864705+00:00'}
+PASSED
+test_1_fluxos.py::test_inscricao_gratuita_confirma_sem_pagamento PASSED
+test_1_fluxos.py::test_pagamento_recusado_libera_a_vaga 
+recusa -> 402 {'id': '643449a0-e844-4a37-afc2-908f0c942aad', 'activityId': 'act-0102ec40', 'participantId': 'part-b96c418b', 'status': 'PAYMENT_FAILED', 'amount': 50.0, 'failureReason': 'DECLINED', 'holdExpiresAt': None, 'correlationId': '084feb6f-aabb-4611-a4f0-fd29ce71ab73', 'createdAt': '2026-11-04T16:48:54.648705Z', 'updatedAt': '2026-11-04T16:48:54.678884Z'}
+PASSED
+test_1_fluxos.py::test_timeout_no_pagamento_libera_vaga_e_compensa 
+timeout -> 503 em 2.1s {'id': 'ce178bfe-6518-4d11-8493-f544c548cfab', 'activityId': 'act-87ee4750', 'participantId': 'part-7eebd2c5', 'status': 'PAYMENT_FAILED', 'amount': 50.0, 'failureReason': 'PAYMENT_UNAVAILABLE', 'holdExpiresAt': None, 'correlationId': 'f53596ef-45f2-4f7b-a11c-870f541f6f22', 'createdAt': '2026-11-04T16:48:55.559558Z', 'updatedAt': '2026-11-04T16:48:57.568267Z'}
+Pagamento apos o provedor responder -> CANCELLED
+PASSED
+test_1_fluxos.py::test_idempotency_key_nao_duplica_inscricao PASSED
+test_1_fluxos.py::test_mesmo_participante_nao_inscreve_duas_vezes PASSED
+test_1_fluxos.py::test_cancelamento_devolve_vaga PASSED
+test_1_fluxos.py::test_seguranca_rn07 PASSED
+test_2_concorrencia.py::test_200_tentativas_simultaneas_atividade_paga 
+[paga] 200 tentativas para 30 vagas em 1.7s
+   respostas HTTP: {409: 170, 201: 30}
+   estado final das vagas: {'activityId': 'act-3fde7408', 'capacity': 30, 'reserved': 0, 'confirmed': 30, 'available': 0}
+PASSED
+test_2_concorrencia.py::test_200_tentativas_simultaneas_atividade_gratuita 
+[gratuita] 200 tentativas para 30 vagas em 1.3s
+   respostas HTTP: {201: 30, 409: 170}
+   estado final das vagas: {'activityId': 'act-09182644', 'capacity': 30, 'reserved': 0, 'confirmed': 30, 'available': 0}
+PASSED
+test_3_falhas.py::test_notificacao_fora_nao_bloqueia_inscricao 
+$ [falha simulada] parando o servico notification
+inscricao com Notificacao fora -> 201 CONFIRMED
+
+$ [recuperacao] religando o servico notification
+notificacao entregue apos o retorno -> {'event_id': 'e206ba4f-8542-4cf8-b252-43322e9d47a3', 'event_type': 'RegistrationConfirmed', 'recipient': 'part-dfebfeac', 'message': 'Sua inscricao em act-d3428e35 esta confirmada.', 'correlation_id': '4c596591-666e-4e12-a232-adda467bc02d', 'sent_at': '2026-11-04T16:49:12.641278+00:00'}
+PASSED
+test_3_falhas.py::test_broker_fora_eventos_ficam_na_outbox 
+$ [falha simulada] parando o servico rabbitmq
+inscricao com RabbitMQ fora -> 201 CONFIRMED
+
+$ [recuperacao] religando o servico rabbitmq
+evento publicado pela outbox apos o retorno do broker -> True
+PASSED
+test_3_falhas.py::test_pagamento_fora_abre_circuit_breaker 
+$ [falha simulada] parando o servico payment
+respostas (status, segundos): [(503, 0.07), (503, 0.05), (503, 0.05), (503, 0.05), (503, 0.07), (503, 0.05)] | circuito: OPEN
+
+$ [recuperacao] religando o servico payment
+apos o retorno do Pagamento -> 201 | circuito: CLOSED
+PASSED
+
+============================= 14 passed in 50.06s ==============================

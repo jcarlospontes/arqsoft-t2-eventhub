@@ -1,0 +1,13 @@
+# Rastreamento de uma inscricao paga pelo correlationId demo-2abfd0 (RQ06)
+# Mesma requisicao vista em 3 servicos, 2 tecnologias
+
+== registration
+13:48:53.571 [registration] corr=demo-2abfd0 inscricao 557efaaf-9d47-40e8-8800-fa89c8fad3d5 PENDING_PAYMENT, vaga reservada
+13:48:53.602 [registration] corr=demo-2abfd0 inscricao 557efaaf-9d47-40e8-8800-fa89c8fad3d5 CONFIRMED (pagamento aprovado)
+
+== payment
+[payment] corr=demo-2abfd0 reg=557efaaf-9d47-40e8-8800-fa89c8fad3d5 provider=APPROVED final=APPROVED
+
+== notification
+[notification] corr=demo-2abfd0 e-mail para part-5a35c435: Sua inscricao em act-849d3f2b esta confirmada.
+

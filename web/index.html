@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EventHub · Demonstração</title>
+<style>
+  :root {
+    --navy: #14213D; --navy-2: #22325A; --paper: #F6F5F1; --card: #FFFFFF; --line: #DAD7CE;
+    --ink: #14213D; --ink-2: #4A5568; --muted: #6B7280;
+    --accent: #B4501F; --accent-soft: #FBEBDD; --accent-light: #F2A65A;
+    --ok: #1F7A4D; --ok-soft: #E3F2EA; --err: #B42318; --err-soft: #FDECEA; --warn: #8A5A00; --warn-soft: #FFF4D6;
+    --java: #B4501F; --python: #2F5D9E;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+         font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, Arial, sans-serif; font-size: 15px; }
+  code, .mono { font-family: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px; }
+  header { background: var(--navy); color: #F6F5F1; padding: 14px 24px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: .3px; }
+  header h1 span { color: var(--accent-light); }
+  .health { display: flex; gap: 14px; flex-wrap: wrap; margin-left: auto; font-size: 13px; color: #C9D3E3; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #8C9AB3; margin-right: 6px; vertical-align: middle; }
+  .dot.up { background: #4ADE80; } .dot.down { background: #F87171; }
+  .pill { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--navy-2); color: #C9D3E3; }
+  .pill.OPEN { background: #7F1D1D; color: #FECACA; } .pill.HALF_OPEN { background: #78350F; color: #FDE68A; } .pill.CLOSED { background: #14532D; color: #BBF7D0; }
+  nav { display: flex; gap: 4px; padding: 0 24px; background: var(--navy); }
+  nav button { background: none; border: 0; color: #C9D3E3; padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer; border-bottom: 3px solid transparent; }
+  nav button.active { color: #fff; border-bottom-color: var(--accent-light); }
+  main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .card + .card { margin-top: 16px; }
+  h2 { font-size: 16px; margin: 0 0 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--accent); }
+  h3 { font-size: 17px; margin: 0; }
+  .muted { color: var(--muted); } .small { font-size: 13px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  select, input { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+  button.btn { font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--navy); background: var(--navy); color: #fff; cursor: pointer; }
+  button.btn.ghost { background: #fff; color: var(--navy); }
+  button.btn.danger { background: #fff; color: var(--err); border-color: var(--err); }
+  button.btn:disabled { opacity: .5; cursor: default; }
+  .act { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; }
+  .act + .act { margin-top: 12px; }
+  .act-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .price { font-weight: 600; white-space: nowrap; }
+  .bar { height: 12px; border-radius: 6px; background: #ECEAE3; display: flex; overflow: hidden; }
+  .bar .c { background: var(--navy); } .bar .r { background: var(--accent-light); }
+  .legend { display: flex; gap: 14px; font-size: 13px; color: var(--ink-2); flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .timeline { list-style: none; padding: 0; margin: 0; }
+  .timeline li { display: grid; grid-template-columns: 74px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid #EEECE6; }
+  .timeline li:first-child { border-top: 0; }
+  .t { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; padding-top: 2px; }
+  .svc { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; color: #fff; margin-right: 6px; vertical-align: 1px; }
+  .svc.java { background: var(--java); } .svc.python { background: var(--python); } .svc.web { background: #6B7280; } .svc.mq { background: #4B5563; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); } .badge.err { background: var(--err-soft); color: var(--err); }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); } .badge.info { background: #E8EEF8; color: var(--python); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-top: 1px solid #EEECE6; vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); border-top: 0; }
+  .empty { color: var(--muted); padding: 8px 0; }
+  .services { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+  .ep { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 6px 0; border-top: 1px solid #EEECE6; font-size: 13px; }
+  .ep code { word-break: break-all; }
+  .act-head code { white-space: nowrap; }
+  button.btn.small { padding: 4px 10px; font-size: 13px; }
+  .m { font-weight: 700; font-size: 11px; padding: 2px 0; border-radius: 4px; text-align: center; color: #fff; height: fit-content; }
+  .m.GET { background: #2F5D9E; } .m.POST { background: #1F7A4D; } .m.DELETE { background: #B42318; }
+  pre { background: var(--navy); color: #E6ECF5; padding: 14px; border-radius: 8px; overflow: auto; margin: 0; }
+  a { color: var(--python); }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 10px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .hidden { display: none; }
+
+  /* ---------- painel de monitoramento (fixo à direita) ---------- */
+  #topbar { position: sticky; top: 0; z-index: 20; }
+  button.mon-toggle { margin-left: 8px; font: inherit; font-size: 13px; font-weight: 600; padding: 5px 12px; border-radius: 999px;
+                      border: 1px solid #5B6B82; background: transparent; color: #F6F5F1; cursor: pointer; }
+  body.mon-open button.mon-toggle { background: var(--accent-light); color: var(--navy); border-color: var(--accent-light); }
+  .monitor { position: fixed; right: 0; bottom: 0; width: 360px; background: #FBFAF7; border-left: 1px solid var(--line);
+             display: none; flex-direction: column; gap: 14px; padding: 16px 18px; overflow: hidden; z-index: 10; }
+  body.mon-open .monitor { display: flex; }
+  body.mon-open main { margin-right: 360px; }
+  @media (max-width: 1100px) { body.mon-open main { margin-right: 0; } .monitor { width: 100%; } }
+  .monitor h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--accent); display: flex; justify-content: space-between; }
+  .monitor h4 span { color: var(--muted); letter-spacing: 0; text-transform: none; font-weight: 400; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tile { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  .tile b { display: block; font-size: 14px; }
+  .tile.down { border-color: var(--err); background: var(--err-soft); }
+  .mrow { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  .mrow + .mrow { margin-top: 6px; }
+  .mrow .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mrow .bar { height: 8px; margin: 6px 0 4px; }
+  .counters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .feed { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .feed ul { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
+  .feed li { display: grid; grid-template-columns: 62px 1fr; gap: 8px; font-size: 12.5px; padding: 5px 0; border-top: 1px solid #EEECE6; }
+  .feed li.new { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
+</style>
+</head>
+<body class="mon-open">
+<div id="topbar">
+<header>
+  <h1>Event<span>Hub</span> · demonstração</h1>
+  <div class="health" id="health"></div>
+  <span class="pill" id="cb" title="Circuit Breaker da Inscrição para o Pagamento">circuito: ?</span>
+  <button class="mon-toggle" id="mon-toggle" title="Mostrar/ocultar o painel de monitoramento">Monitor</button>
+</header>
+<nav>
+  <button class="active" data-tab="fluxo">Inscrição ao vivo</button>
+  <button data-tab="apis">Serviços e APIs</button>
+</nav>
+</div>
+
+<!-- ===================== PAINEL DE MONITORAMENTO ===================== -->
+<aside class="monitor" id="monitor" aria-label="Monitoramento ao vivo">
+  <div>
+    <h4>Serviços <span id="mon-cb"></span></h4>
+    <div class="tiles" id="mon-services"></div>
+  </div>
+  <div>
+    <h4>Vagas ao vivo · testes <span>atualiza a cada 1 s</span></h4>
+    <div id="mon-tests"><div class="small muted">Rode <code>pytest tests -v -s</code>: as atividades criadas pelos testes aparecem aqui.</div></div>
+  </div>
+  <div class="feed">
+    <h4>Eventos no RabbitMQ <span id="mon-rate"></span></h4>
+    <div class="counters" id="mon-counters"></div>
+    <ul id="mon-feed"><li class="small muted" style="display:block">aguardando eventos…</li></ul>
+  </div>
+</aside>
+
+<main>
+  <!-- ===================== ABA 1: FLUXO ===================== -->
+  <section id="tab-fluxo">
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h2>1 · Login</h2>
+          <div class="row" id="login-form">
+            <select id="user"><option value="ana">ana (participante)</option><option value="bruno">bruno (participante)</option></select>
+            <input id="password" type="password" value="demo123" aria-label="Senha" style="width:120px">
+            <button class="btn" id="btn-login">Entrar</button>
+            <span class="muted small">token JWT emitido pelo Catálogo</span>
+          </div>
+          <div class="row hidden" id="logged">
+            <span>Logado como <b id="who"></b></span>
+            <button class="btn ghost" id="btn-logout">Trocar usuário</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row" style="justify-content:space-between;margin-bottom:8px">
+            <h2 style="margin:0">2 · Atividades</h2>
+          </div>
+          <div class="legend" style="margin-bottom:12px">
+            <span><i style="background:var(--navy)"></i>confirmadas</span>
+            <span><i style="background:var(--accent-light)"></i>reservadas (aguardando pagamento)</span>
+            <span><i style="background:#ECEAE3"></i>livres</span>
+            <span class="muted">vagas vêm da Inscrição (fonte da verdade)</span>
+          </div>
+          <div id="activities"><div class="empty">carregando…</div></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="row" style="justify-content:space-between;margin-bottom:4px">
+            <h2 style="margin:0">3 · O que aconteceu</h2>
+            <span class="small muted" id="corr"></span>
+          </div>
+          <div class="small muted" id="tl-title" style="margin-bottom:6px">Faça uma inscrição para ver a requisição atravessando os serviços.</div>
+          <ul class="timeline" id="timeline"></ul>
+        </div>
+
+        <div class="card">
+          <h2>4 · Minhas inscrições</h2>
+          <div id="mine"><div class="empty">Faça login para ver.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ABA 2: APIS ===================== -->
+  <section id="tab-apis" class="hidden">
+    <p class="muted" style="margin-top:0">O navegador fala com um único endereço; o nginx encaminha <code>/api/&lt;serviço&gt;/…</code> para cada serviço (um API Gateway simplificado). Status atualizado a cada 3 s.</p>
+    <div class="services" id="services"></div>
+    <div class="card" style="margin-top:16px">
+      <h2>Eventos assíncronos · RabbitMQ</h2>
+      <p class="small" style="margin-top:0">Exchange <code>eventhub.events</code> (topic). Produtor: Inscrição, via Transactional Outbox. Consumidor: Notificação, fila <code>notification.registration</code> com DLQ. Entrega <i>at-least-once</i>: o consumidor ignora <code>eventId</code> repetido.</p>
+      <table>
+        <tr><th>Evento</th><th>Routing key</th><th>Quando</th></tr>
+        <tr><td><code>RegistrationConfirmed</code></td><td><code>registration.confirmed</code></td><td>Inscrição gratuita aceita ou pagamento aprovado</td></tr>
+        <tr><td><code>RegistrationReleased</code></td><td><code>registration.released</code></td><td>Reserva desfeita: recusa, pagamento indisponível ou prazo vencido</td></tr>
+        <tr><td><code>RegistrationCancelled</code></td><td><code>registration.cancelled</code></td><td>Participante cancelou uma inscrição confirmada</td></tr>
+      </table>
+      <div class="row" style="margin-top:14px;align-items:flex-start">
+        <pre class="mono" style="flex:1;min-width:280px">{
+  "eventId": "uuid",
+  "type": "RegistrationConfirmed",
+  "version": 1,
+  "occurredAt": "2026-11-20T14:00:00Z",
+  "producer": "registration-service",
+  "correlationId": "web-3fa9c1",
+  "payload": { "registrationId": "…", "activityId": "act-workshop",
+               "participantId": "ana", "amount": 50.0 }
+}</pre>
+        <div class="small" style="flex:1;min-width:240px">
+          <p style="margin-top:0"><b>Painel do RabbitMQ:</b> <a id="rabbit-link" target="_blank" rel="noopener">abrir</a> (usuário e senha do <code>.env</code>), aba <i>Queues</i>.</p>
+          <p><b>Contratos REST:</b> Swagger gerado pelo FastAPI em cada serviço Python; OpenAPI da Inscrição em <a href="/docs/openapi-registration.yaml" target="_blank">openapi-registration.yaml</a>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = { catalog: '/api/catalog', registration: '/api/registration', payment: '/api/payment', notification: '/api/notification' };
+const HOST = location.hostname;
+const SERVICES = [
+  { key: 'catalog', name: 'Catálogo', tech: 'Python · FastAPI', cls: 'python', port: 8001, docs: `http://${HOST}:8001/docs`,
+    owns: 'eventos, atividades, login de demonstração',
+    eps: [['POST','/auth/token','Login → JWT'],['GET','/activities','Atividades publicadas'],['GET','/activities/{id}','Detalhe (capacidade, preço)'],['POST','/activities','Cria atividade (organizador da organização)']] },
+  { key: 'registration', name: 'Inscrição', tech: 'Java 21', cls: 'java', port: 8080, docs: '/docs/openapi-registration.yaml',
+    owns: 'inscrições, vagas, outbox',
+    eps: [['POST','/registrations','Inscreve (reserva → pagamento → confirma/libera)'],['GET','/registrations/{id}','Consulta (só o dono)'],['DELETE','/registrations/{id}','Cancela e devolve a vaga'],['GET','/me/registrations','Minhas inscrições'],['GET','/activities/{id}/seats','Vagas: fonte da verdade'],['GET','/internal/circuit-breaker','Estado do circuito']] },
+  { key: 'payment', name: 'Pagamento', tech: 'Python · FastAPI', cls: 'python', port: 8002, docs: `http://${HOST}:8002/docs`,
+    owns: 'pagamentos, estornos (provedor simulado)',
+    eps: [['POST','/payments','Cobra (tok_ok, tok_declined, tok_slow)'],['GET','/payments/{registrationId}','Status do pagamento'],['POST','/payments/{registrationId}/cancel','Compensação: cancela/estorna']] },
+  { key: 'notification', name: 'Notificação', tech: 'Python · consumidor RabbitMQ', cls: 'python', port: 8003, docs: `http://${HOST}:8003/docs`,
+    owns: 'e-mails enviados, eventos processados',
+    eps: [['GET','/notifications?recipient=','E-mails "enviados" (demonstração)']] },
+];
+
+let token = null, user = null, activities = [], health = {}, latency = {}, cbState = '?';
+
+// ---------------------------------------------------------------- utilitários
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const rid = () => Math.random().toString(16).slice(2, 8);
+const uuid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c === 'x' ? r : (r&0x3|0x8)).toString(16); });
+const money = (v) => v === 0 ? 'Grátis' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2600); }
+
+async function call(method, url, { body, headers = {} } = {}) {
+  const h = { ...headers };
+  if (token) h['Authorization'] = `Bearer ${token}`;
+  if (body) h['Content-Type'] = 'application/json';
+  const t0 = performance.now();
+  try {
+    const res = await fetch(url, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
+    const text = await res.text();
+    let data; try { data = text ? JSON.parse(text) : null; } catch { data = { message: text.slice(0, 120) }; }
+    if (res.status >= 502 && res.status <= 504 && !(data && data.status)) data = { message: 'serviço fora do ar (gateway sem resposta)' };
+    return { status: res.status, ok: res.ok, data, ms: Math.round(performance.now() - t0) };
+  } catch (e) {
+    return { status: 0, ok: false, data: { message: 'sem conexão' }, ms: Math.round(performance.now() - t0) };
+  }
+}
+
+// ---------------------------------------------------------------- abas
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
+  $('tab-fluxo').classList.toggle('hidden', b.dataset.tab !== 'fluxo');
+  $('tab-apis').classList.toggle('hidden', b.dataset.tab !== 'apis');
+});
+
+// ---------------------------------------------------------------- saúde dos serviços
+async function pollHealth() {
+  await Promise.all(SERVICES.map(async s => {
+    const r = await call('GET', `${API[s.key]}/health`);
+    health[s.key] = r.ok;
+    latency[s.key] = r.ms;
+  }));
+  $('health').innerHTML = SERVICES.map(s =>
+    `<span><span class="dot ${health[s.key] ? 'up' : 'down'}"></span>${s.name} <span style="opacity:.6">${s.cls === 'java' ? 'Java' : 'Python'}</span></span>`).join('');
+  const cb = await call('GET', `${API.registration}/internal/circuit-breaker`);
+  const state = cb.ok ? cb.data.payment : '?';
+  $('cb').className = 'pill ' + state;
+  $('cb').textContent = 'circuito do pagamento: ' + state;
+  cbState = state;
+  renderServices();
+  renderMonitorServices();
+}
+
+// ---------------------------------------------------------------- login
+$('btn-login').onclick = async () => {
+  token = null;
+  const r = await call('POST', `${API.catalog}/auth/token`, { body: { username: $('user').value, password: $('password').value } });
+  if (!r.ok) return toast(r.status === 401 ? 'Usuário ou senha inválidos' : 'Catálogo indisponível');
+  token = r.data.access_token; user = $('user').value;
+  $('who').textContent = user;
+  $('login-form').classList.add('hidden'); $('logged').classList.remove('hidden');
+  loadMine();
+};
+$('btn-logout').onclick = () => {
+  token = null; user = null;
+  $('login-form').classList.remove('hidden'); $('logged').classList.add('hidden');
+  $('mine').innerHTML = '<div class="empty">Faça login para ver.</div>';
+};
+
+// ---------------------------------------------------------------- atividades e vagas
+async function loadActivities() {
+  const r = await call('GET', `${API.catalog}/activities`);
+  if (!r.ok) { $('activities').innerHTML = `<div class="empty">Catálogo indisponível (${esc(r.data?.message)})</div>`; return; }
+  activities = r.data.filter(a => a.event_name !== 'Teste');   // as dos testes ficam no painel de monitoramento
+  const seats = await Promise.all(activities.map(a => call('GET', `${API.registration}/activities/${encodeURIComponent(a.id)}/seats`)));
+  activities.forEach((a, i) => a.seats = seats[i].ok ? seats[i].data : null);
+  renderActivities();
+}
+
+function renderActivities() {
+  if (!activities.length) { $('activities').innerHTML = '<div class="empty">Nenhuma atividade.</div>'; return; }
+  const keep = {}; document.querySelectorAll('[data-card]').forEach(s => keep[s.dataset.card] = s.value);
+  $('activities').innerHTML = activities.map(a => {
+    const s = a.seats;
+    const bar = s ? `<div class="bar" title="${s.confirmed} confirmadas, ${s.reserved} reservadas, ${s.available} livres de ${s.capacity}">
+        <div class="c" style="width:${100*s.confirmed/s.capacity}%"></div><div class="r" style="width:${100*s.reserved/s.capacity}%"></div></div>
+        <div class="small muted">${s.confirmed} confirmadas · ${s.reserved} reservadas · <b style="color:var(--ink)">${s.available} livres</b> de ${s.capacity}</div>`
+      : `<div class="small" style="color:var(--err)">Vagas indisponíveis: serviço de Inscrição fora do ar</div>`;
+    const card = a.price > 0 ? `<select data-card="${esc(a.id)}" aria-label="Cartão simulado">
+        <option value="tok_ok">cartão aprova</option><option value="tok_declined">cartão recusa</option><option value="tok_slow">provedor demora 5 s</option></select>` : '';
+    return `<div class="act">
+      <div class="act-head"><div><h3>${a.event_name === 'Teste' ? '<span class="badge warn" style="margin-right:8px">teste automatizado</span>' : ''}${esc(a.title)}</h3><div class="small muted">${esc(a.event_name)} · ${new Date(a.starts_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · <code>${esc(a.id)}</code></div></div>
+        <div class="price">${money(a.price)}</div></div>
+      ${bar}
+      <div class="row">${card}<button class="btn" data-reg="${esc(a.id)}">Inscrever</button></div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('[data-card]').forEach(s => { if (keep[s.dataset.card]) s.value = keep[s.dataset.card]; });
+  document.querySelectorAll('[data-reg]').forEach(b => b.onclick = () => {
+    const a = activities.find(x => x.id === b.dataset.reg);
+    const sel = document.querySelector(`[data-card="${CSS.escape(a.id)}"]`);
+    register(a, sel ? sel.value : null);
+  });
+}
+
+// ---------------------------------------------------------------- linha do tempo
+let t0 = 0;
+function tlStart(title, corr) {
+  t0 = performance.now();
+  $('timeline').innerHTML = '';
+  $('tl-title').innerHTML = title;
+  $('corr').innerHTML = `correlationId <code>${esc(corr)}</code>`;
+}
+function step(svc, cls, title, detail = '', badge = null) {
+  const li = document.createElement('li');
+  const b = badge ? ` <span class="badge ${badge[1]}">${esc(badge[0])}</span>` : '';
+  li.innerHTML = `<div class="t">+${Math.round(performance.now() - t0)} ms</div>
+    <div><span class="svc ${cls}">${esc(svc)}</span><b>${title}</b>${b}${detail ? `<div class="small muted" style="margin-top:3px">${detail}</div>` : ''}</div>`;
+  $('timeline').appendChild(li);
+}
+
+async function waitNotification(corr, timeoutMs = 10000) {
+  const end = performance.now() + timeoutMs;
+  while (performance.now() < end) {
+    const r = await call('GET', `${API.notification}/notifications?recipient=${encodeURIComponent(user)}`);
+    if (r.ok) { const n = r.data.find(x => x.correlation_id === corr); if (n) return n; }
+    await sleep(400);
+  }
+  return null;
+}
+
+async function showNotification(corr) {
+  const n = await waitNotification(corr);
+  if (n) step('Notificação', 'python', `consumiu <code>${esc(n.event_type)}</code> do RabbitMQ`, `“${esc(n.message)}”`, ['e-mail enviado', 'ok']);
+  else step('RabbitMQ', 'mq', 'evento ainda na fila', 'A Notificação está fora do ar? O e-mail sai quando ela voltar; a inscrição não depende disso.', ['assíncrono', 'warn']);
+}
+
+// ---------------------------------------------------------------- inscrever
+async function register(a, card) {
+  if (!token) return toast('Faça login primeiro (passo 1)');
+  const corr = 'web-' + rid();
+  tlStart(`Inscrição de <b>${esc(user)}</b> em <b>${esc(a.title)}</b>${card ? ` · <code>${esc(card)}</code>` : ''}`, corr);
+  step('Navegador', 'web', 'POST /registrations', `via gateway nginx → Inscrição · Idempotency-Key gerada`);
+  const r = await call('POST', `${API.registration}/registrations`, {
+    body: { activityId: a.id, ...(card ? { cardToken: card } : {}) },
+    headers: { 'X-Correlation-Id': corr, 'Idempotency-Key': uuid() } });
+  const d = r.data || {};
+
+  if (r.status === 201) {
+    step('Inscrição', 'java', `HTTP 201 em ${r.ms} ms`, a.price > 0
+      ? 'Reservou a vaga (UPDATE condicional), chamou o Pagamento, confirmou e gravou o evento na outbox — tudo em transações locais.'
+      : 'Atividade gratuita: vaga confirmada direto, evento gravado na outbox na mesma transação.', ['CONFIRMED', 'ok']);
+  } else if (r.status === 402) {
+    step('Inscrição', 'java', `HTTP 402 em ${r.ms} ms`, 'Pagamento recusado: a reserva foi desfeita e a vaga voltou (compensação da Saga).', ['PAYMENT_FAILED · DECLINED', 'err']);
+  } else if (r.status === 503 && d.status === 'PAYMENT_FAILED') {
+    step('Inscrição', 'java', `HTTP 503 em ${r.ms} ms`, r.ms < 1000
+      ? 'Circuito aberto: a Inscrição nem chamou o Pagamento, falhou rápido e liberou a vaga.'
+      : 'Pagamento não respondeu em 2 s (timeout): vaga liberada na hora, sem ficar presa.', ['PAYMENT_FAILED · UNAVAILABLE', 'err']);
+  } else {
+    step('Inscrição', 'java', `HTTP ${r.status} em ${r.ms} ms`, esc(d.message || ''), [d.error || 'erro', r.status === 409 ? 'warn' : 'err']);
+    refreshAll();
+    return;
+  }
+
+  if (a.price > 0 && d.id) {
+    let p = await call('GET', `${API.payment}/payments/${d.id}`);
+    if (p.ok && d.failureReason === 'PAYMENT_UNAVAILABLE') {
+      step('Pagamento', 'python', `compensação: pagamento ${esc(p.data.status)}`,
+        'A Inscrição desistiu após 2 s e pediu o cancelamento. O provedor externo ainda está processando…', [p.data.status, 'warn']);
+      await sleep(Math.max(0, 6500 - (performance.now() - t0)));
+      p = await call('GET', `${API.payment}/payments/${d.id}`);
+      if (p.ok) step('Provedor externo', 'mq', `respondeu tarde · estado final: ${esc(p.data.status)}`,
+        p.data.status === 'APPROVED' ? 'Cobrança efetivada sem inscrição: a compensação falhou.' : 'Nada foi cobrado de uma inscrição que não foi confirmada.',
+        [p.data.status === 'APPROVED' ? 'cobrado' : 'sem cobrança', p.data.status === 'APPROVED' ? 'err' : 'ok']);
+    } else if (p.ok) {
+      step('Pagamento', 'python', `pagamento ${esc(p.data.status)}`, `mesmo correlationId recebido: <code>${esc(p.data.correlation_id)}</code>`,
+        [p.data.status, p.data.status === 'APPROVED' ? 'ok' : 'err']);
+    } else if (p.status === 404) {
+      step('Pagamento', 'python', 'nenhum pagamento registrado', 'A chamada nem chegou ao serviço de Pagamento (fora do ar ou circuito aberto).', ['sem cobrança', 'ok']);
+    } else {
+      step('Pagamento', 'python', 'serviço indisponível para consulta', esc(p.data?.message || ''), ['offline', 'warn']);
+    }
+  }
+  refreshAll();
+  await showNotification(corr);
+  loadMine();
+}
+
+// ---------------------------------------------------------------- minhas inscrições
+const STATUS = { CONFIRMED: 'ok', PENDING_PAYMENT: 'warn', PAYMENT_FAILED: 'err', EXPIRED: 'err', CANCELLED: 'info' };
+async function loadMine() {
+  if (!token) return;
+  const r = await call('GET', `${API.registration}/me/registrations`);
+  if (!r.ok) { $('mine').innerHTML = `<div class="empty">Inscrição indisponível (${esc(r.data?.message)})</div>`; return; }
+  if (!r.data.length) { $('mine').innerHTML = '<div class="empty">Nenhuma inscrição ainda.</div>'; return; }
+  const title = (id) => (activities.find(a => a.id === id) || {}).title || id;
+  $('mine').innerHTML = `<table><tr><th>Atividade</th><th>Status</th><th></th></tr>${r.data.slice(0, 6).map(x => `
+    <tr><td>${esc(title(x.activityId))}<div class="small muted">${money(x.amount)} · ${new Date(x.createdAt).toLocaleTimeString('pt-BR')}</div></td>
+    <td><span class="badge ${STATUS[x.status] || 'info'}">${esc(x.status)}</span>${x.failureReason ? `<div class="small muted">${esc(x.failureReason)}</div>` : ''}</td>
+    <td>${x.status === 'CONFIRMED' ? `<button class="btn danger small" data-cancel="${esc(x.id)}" data-act="${esc(x.activityId)}">Cancelar</button>` : ''}</td></tr>`).join('')}</table>`;
+  document.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => cancel(b.dataset.cancel, title(b.dataset.act)));
+}
+
+async function cancel(id, actTitle) {
+  const corr = 'web-' + rid();
+  tlStart(`Cancelamento de <b>${esc(user)}</b> em <b>${esc(actTitle)}</b>`, corr);
+  step('Navegador', 'web', `DELETE /registrations/${esc(id.slice(0, 8))}…`);
+  const r = await call('DELETE', `${API.registration}/registrations/${id}`, { headers: { 'X-Correlation-Id': corr } });
+  if (r.ok) step('Inscrição', 'java', `HTTP 200 em ${r.ms} ms`, 'Vaga devolvida e evento RegistrationCancelled gravado na outbox, na mesma transação.', ['CANCELLED', 'info']);
+  else step('Inscrição', 'java', `HTTP ${r.status}`, esc(r.data?.message || ''), [r.data?.error || 'erro', 'err']);
+  refreshAll();
+  if (r.ok) await showNotification(corr);
+  loadMine();
+}
+
+// ---------------------------------------------------------------- aba de APIs
+function renderServices() {
+  $('services').innerHTML = SERVICES.map(s => `<div class="card" style="margin:0">
+    <div class="row" style="justify-content:space-between;margin-bottom:6px">
+      <h3><span class="dot ${health[s.key] ? 'up' : 'down'}"></span>${s.name}</h3>
+      <span class="svc ${s.cls}">${esc(s.tech)}</span></div>
+    <div class="small muted">Dono de: ${esc(s.owns)}</div>
+    <div class="small muted" style="margin-bottom:8px">Gateway: <code>${API[s.key]}/…</code> · direto: <code>:${s.port}</code></div>
+    ${s.eps.map(([m, p, d]) => `<div class="ep"><span class="m ${m}">${m}</span><div><code>${esc(p)}</code><div class="muted">${esc(d)}</div></div></div>`).join('')}
+    <div style="margin-top:10px" class="small"><a href="${s.docs}" target="_blank" rel="noopener">${s.cls === 'java' ? 'Contrato OpenAPI (YAML)' : 'Swagger / OpenAPI interativo'}</a></div>
+  </div>`).join('');
+}
+$('rabbit-link').href = `http://${HOST}:15672`;
+
+// ---------------------------------------------------------------- ciclo
+function refreshAll() { loadActivities(); }
+// ---------------------------------------------------------------- painel de monitoramento
+const monOpen = () => document.body.classList.contains('mon-open');
+function placeMonitor() { $('monitor').style.top = $('topbar').offsetHeight + 'px'; }
+$('mon-toggle').onclick = () => {
+  document.body.classList.toggle('mon-open');
+  try { localStorage.setItem('eventhub-monitor', monOpen() ? '1' : '0'); } catch {}
+};
+try { if (localStorage.getItem('eventhub-monitor') === '0') document.body.classList.remove('mon-open'); } catch {}
+window.addEventListener('resize', placeMonitor);
+
+function renderMonitorServices() {
+  $('mon-services').innerHTML = SERVICES.map(s => `<div class="tile ${health[s.key] ? '' : 'down'}">
+      <b><span class="dot ${health[s.key] ? 'up' : 'down'}"></span>${s.name}</b>
+      <span class="muted">${s.cls === 'java' ? 'Java' : 'Python'} · ${health[s.key] ? `${latency[s.key]} ms` : 'fora do ar'}</span></div>`).join('');
+  $('mon-cb').innerHTML = `circuito do pagamento: <b style="color:${cbState === 'OPEN' ? 'var(--err)' : cbState === 'HALF_OPEN' ? 'var(--warn)' : 'var(--ok)'}">${esc(cbState)}</b>`;
+}
+
+async function monitorTests() {
+  const r = await call('GET', `${API.catalog}/activities`);
+  if (!r.ok) { $('mon-tests').innerHTML = '<div class="small" style="color:var(--err)">Catálogo fora do ar</div>'; return; }
+  const tests = r.data.filter(a => a.event_name === 'Teste')
+    .sort((x, y) => (y.created_at || '').localeCompare(x.created_at || '')).slice(0, 3);
+  if (!tests.length) return;
+  const seats = await Promise.all(tests.map(a => call('GET', `${API.registration}/activities/${encodeURIComponent(a.id)}/seats`)));
+  $('mon-tests').innerHTML = tests.map((a, i) => {
+    const s = seats[i].ok ? seats[i].data : null;
+    return `<div class="mrow"><div class="name" title="${esc(a.title)}">${esc(a.title)}</div>${s ? `
+      <div class="bar"><div class="c" style="width:${100*s.confirmed/s.capacity}%"></div><div class="r" style="width:${100*s.reserved/s.capacity}%"></div></div>
+      <div class="muted"><b style="color:var(--ink)">${s.confirmed}/${s.capacity}</b> confirmadas · ${s.reserved} reservadas · ${s.available} livres</div>`
+      : '<div class="small" style="color:var(--err)">vagas indisponíveis (Inscrição fora)</div>'}</div>`;
+  }).join('');
+}
+
+const EVT = { RegistrationConfirmed: ['confirmada', 'ok'], RegistrationReleased: ['vaga liberada', 'err'], RegistrationCancelled: ['cancelada', 'info'] };
+let seenEvents = new Set(), firstFeed = true;
+async function monitorFeed() {
+  const r = await call('GET', `${API.notification}/notifications`);
+  if (!r.ok) { $('mon-rate').textContent = 'Notificação fora do ar: eventos esperando na fila'; return; }
+  const list = r.data;  // os 100 mais recentes
+  const now = Date.now();
+  const lastMin = list.filter(n => now - Date.parse(n.sent_at) < 60000);
+  const count = (t) => lastMin.filter(n => n.event_type === t).length;
+  $('mon-rate').textContent = `${lastMin.length} no último minuto`;
+  $('mon-counters').innerHTML = Object.entries(EVT).map(([t, [label, cls]]) => `<span class="badge ${cls}">${count(t)} ${label}</span>`).join('');
+  $('mon-feed').innerHTML = list.slice(0, 40).map(n => {
+    const [label, cls] = EVT[n.event_type] || [n.event_type, 'info'];
+    const fresh = !firstFeed && !seenEvents.has(n.event_id);
+    const reason = (n.message.match(/\(([A-Z_]+)\)/) || [])[1];
+    return `<li class="${fresh ? 'new' : ''}"><span class="t">${new Date(n.sent_at).toLocaleTimeString('pt-BR')}</span>
+      <div><span class="badge ${cls}">${label}</span> <b>${esc(n.recipient)}</b>${reason ? ` <span class="muted">${esc(reason)}</span>` : ''}
+      <div class="muted mono" style="font-size:11.5px">${esc((n.message.match(/act-[a-z0-9-]+/) || [''])[0])} · corr ${esc((n.correlation_id || '').slice(0, 10))}</div></div></li>`;
+  }).join('') || '<li class="small muted" style="display:block">nenhum evento ainda</li>';
+  list.forEach(n => seenEvents.add(n.event_id));
+  firstFeed = false;
+}
+
+(async function monitorLoop() {
+  if (monOpen()) { placeMonitor(); await Promise.all([monitorTests(), monitorFeed()]); }
+  setTimeout(monitorLoop, 1000);
+})();
+
+renderServices();
+pollHealth();
+setInterval(pollHealth, 2000);
+(async function seatsLoop() {
+  await loadActivities();
+  setTimeout(seatsLoop, 3000);
+})();
+</script>
+</body>
+</html>
