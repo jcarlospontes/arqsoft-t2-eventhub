@@ -1,0 +1,107 @@
+openapi: 3.0.3
+info:
+  title: EventHub - Registration Service
+  version: 1.0.0
+  description: |
+    Servico de Inscricao (Java 21). Dono das inscricoes e das vagas.
+    Todas as rotas aceitam o header X-Correlation-Id, que e devolvido na resposta e propagado
+    para Catalogo, Pagamento e eventos. Os contratos do Catalogo e do Pagamento (FastAPI)
+    sao gerados automaticamente em http://localhost:8001/docs e http://localhost:8002/docs.
+servers:
+  - url: http://localhost:8080
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Correlation:
+      name: X-Correlation-Id
+      in: header
+      schema: { type: string }
+  schemas:
+    Registration:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        activityId: { type: string }
+        participantId: { type: string }
+        status: { type: string, enum: [PENDING_PAYMENT, CONFIRMED, PAYMENT_FAILED, EXPIRED, CANCELLED] }
+        amount: { type: number }
+        failureReason: { type: string, nullable: true, enum: [DECLINED, PAYMENT_UNAVAILABLE, HOLD_EXPIRED] }
+        holdExpiresAt: { type: string, format: date-time, nullable: true }
+        correlationId: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Error:
+      type: object
+      properties:
+        error: { type: string, example: SOLD_OUT }
+        message: { type: string }
+    Seats:
+      type: object
+      properties:
+        activityId: { type: string }
+        capacity: { type: integer }
+        reserved: { type: integer }
+        confirmed: { type: integer }
+        available: { type: integer }
+paths:
+  /registrations:
+    post:
+      summary: Solicita inscricao (reserva a vaga e, se paga, executa o pagamento)
+      security: [{ bearer: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Correlation'
+        - name: Idempotency-Key
+          in: header
+          description: Repetir a chamada com a mesma chave devolve o resultado original.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [activityId]
+              properties:
+                activityId: { type: string, example: act-workshop }
+                cardToken: { type: string, description: "Provedor simulado: tok_ok | tok_declined | tok_slow" }
+      responses:
+        '201': { description: Inscricao confirmada, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
+        '402': { description: Pagamento recusado, vaga liberada, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
+        '503': { description: Pagamento indisponivel/timeout, vaga liberada, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
+        '409': { description: SOLD_OUT ou ALREADY_REGISTERED, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { description: Token ausente ou invalido }
+        '404': { description: Atividade inexistente }
+  /registrations/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: Consulta a inscricao (somente o proprio participante)
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
+        '403': { description: Inscricao de outro participante }
+    delete:
+      summary: Cancela uma inscricao confirmada e devolve a vaga
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: Cancelada, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
+        '409': { description: Inscricao nao esta confirmada }
+  /me/registrations:
+    get:
+      summary: Lista as inscricoes do participante autenticado
+      security: [{ bearer: [] }]
+      responses:
+        '200': { description: OK }
+  /activities/{activityId}/seats:
+    get:
+      summary: Disponibilidade autoritativa de vagas (publico)
+      parameters:
+        - { name: activityId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Seats' } } } }
+  /internal/circuit-breaker:
+    get:
+      summary: Estado do circuit breaker do Pagamento (diagnostico)
+      responses:
+        '200': { description: OK }
