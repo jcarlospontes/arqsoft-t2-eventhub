@@ -41,8 +41,6 @@ O EventHub foi dividido a partir de **forças**, e não de um serviço por requi
 
 A regra que guia tudo: **só a Inscrição decide vagas; o resto reage a eventos.** O raciocínio completo, as alternativas rejeitadas e os 5 ADRs estão no [relatório técnico](docs/relatorio-tecnico.md).
 
-> Siglas do enunciado: **RF** = requisito funcional (o que o sistema faz), **RN** = regra de negócio (o que nunca pode ser violado), **RQ** = requisito de qualidade (como o sistema precisa se comportar).
-
 ### O que cada serviço resolve
 
 | Serviço | Requisitos que atende | Como atende |
@@ -60,27 +58,27 @@ A regra que guia tudo: **só a Inscrição decide vagas; o resto reage a eventos
 
 Cada técnica entrou para resolver um requisito, não "por boa prática".
 
-| Técnica | O que significa, em linguagem simples | Por que usamos | Onde está |
-| --- | --- | --- | --- |
-| **Database per Service** | Cada serviço é dono dos seus dados e ninguém lê a tabela do outro. Quem precisa de um dado alheio pergunta pela API do dono ou guarda uma cópia. | Evoluir cada serviço sem quebrar os outros (RQ01) | `infra/init-db.sh` |
-| **Reserva atômica** | A vaga é reservada com um único comando SQL que só funciona se ainda houver vaga: `UPDATE … WHERE reservadas + confirmadas < capacidade`. Se afetar 0 linhas, acabou a vaga. O banco serializa a disputa. | Zero overbooking, mesmo com 200 pessoas ao mesmo tempo (RN01/RQ04) | `RegistrationService.java` e o `CHECK seats_invariant` em `schema.sql` |
-| **Saga orquestrada** | Uma "transação longa" quebrada em passos locais (reservar → pagar → confirmar), cada um com seu próprio commit. Um serviço (a Inscrição) comanda a sequência. | Inscrição e Pagamento têm bancos diferentes, então não existe um commit único entre eles (RN02/RQ04) | `RegistrationService.java` (`register`, `confirm`, `release`) |
-| **Compensação** | O "desfazer" de um passo da Saga. Se o pagamento falha, a Inscrição libera a vaga e pede ao Pagamento para cancelar ou estornar. | Nenhuma vaga presa e nenhuma cobrança indevida (RN03) | `release()` + `POST /payments/{id}/cancel` |
-| **Transactional Outbox** | O evento ("inscrição confirmada") é gravado numa tabela `outbox`, **na mesma transação** da inscrição. Um processo separado publica no RabbitMQ e só marca como enviado depois que o broker confirma. | Se o serviço cair ou o RabbitMQ estiver fora, o evento não se perde (RN05/RQ04) | Tabela `outbox` + `OutboxRelay.java` |
-| **Publish/Subscribe** | Um serviço publica um evento e quem tiver interesse recebe. O produtor não sabe quem são os consumidores. | A Inscrição não depende da Notificação estar no ar (RQ03) | Exchange `eventhub.events` (RabbitMQ) |
-| **Consumidor idempotente** | Se a mesma mensagem chegar duas vezes, o efeito acontece uma vez só (o e-mail sai uma vez). | O RabbitMQ garante entregar "pelo menos uma vez", às vezes duas | `notification/app.py` (`event_id` único) |
-| **Idempotency-Key** | O cliente manda uma chave única no pedido. Repetir o mesmo pedido devolve o mesmo resultado, sem criar uma segunda inscrição. | Clique duplo ou rede instável não duplicam a inscrição | Header `Idempotency-Key` na Inscrição |
-| **Dead Letter Queue (DLQ)** | Uma fila separada para mensagens que não conseguiram ser processadas, para não travarem a fila principal. | Uma mensagem com defeito não para as notificações | Fila `notification.dlq` |
-| **Timeout** | O tempo máximo de espera numa chamada a outro serviço (2 s). Passou disso, a Inscrição desiste e libera a vaga. | Um provedor lento não segura o usuário nem a vaga (RQ03) | `PaymentClient.java` |
-| **Circuit Breaker** | Um "disjuntor": depois de 5 falhas seguidas, a Inscrição **para de chamar** o Pagamento por 15 s e responde erro na hora; depois testa uma chamada e, se der certo, volta ao normal. | Não acumular requisições presas esperando um serviço morto no pico (RQ02/RQ03) | `CircuitBreaker.java` (estados CLOSED → OPEN → HALF_OPEN) |
-| **Correlation ID** | Um identificador que acompanha a requisição por todos os serviços e eventos. Com ele, dá para achar a mesma inscrição nos logs de Java e de Python. | Rastrear e diagnosticar uma inscrição de ponta a ponta (RQ06) | Header `X-Correlation-Id` → evento → logs |
-| **Projeção local** | Guardar uma cópia do dado de outro serviço. A Inscrição guarda capacidade e preço da atividade depois de consultar o Catálogo uma vez. | O caminho mais carregado não depende do Catálogo a cada inscrição (RQ02) | Tabela `activity_seats` |
-| **Contratos explícitos** | As interfaces entre serviços são documentadas: OpenAPI para REST e um envelope versionado para eventos. | Java e Python conversam sem depender de detalhes internos (RQ05) | `/docs` (FastAPI), `docs/openapi-registration.yaml`, `docs/eventos.md` |
-| **Token de acesso (JWT)** | Um "crachá" digital assinado que diz quem é o usuário e qual o seu papel. Cada serviço confere o crachá e só deixa cada um mexer no que é seu. | Acesso autenticado e autorizado (RN07/RQ07) | `Jwt.java`, `catalog/app.py` |
-| **API Gateway (simplificado)** | Uma porta de entrada única para o cliente. Aqui só encaminha; no desenho também validaria token e limitaria a taxa de acesso. | Um endereço só para o front | `web/nginx.conf` |
-| **Health check** | Um endpoint `/health` que diz se o serviço está vivo. | Ver o estado de cada serviço (painel do front) | `GET /health` em todos |
+| Técnica | Requisito | Onde está |
+| --- | --- | --- |
+| **Database per Service** (cada serviço é dono dos seus dados; ninguém lê a tabela do outro) | RQ01 | `infra/init-db.sh` |
+| **Reserva atômica** (`UPDATE … WHERE reservadas + confirmadas < capacidade`; 0 linhas = sem vaga) | RN01, RQ04 | `RegistrationService.java`, `CHECK seats_invariant` em `schema.sql` |
+| **Saga orquestrada** (reservar → pagar → confirmar em passos locais, coordenados pela Inscrição) | RN02, RQ04 | `RegistrationService.java` (`register`, `confirm`, `release`) |
+| **Compensação** (libera a vaga e cancela/estorna o pagamento quando a Saga falha) | RN03 | `release()` + `POST /payments/{id}/cancel` |
+| **Transactional Outbox** (evento gravado na mesma transação da inscrição e publicado depois, com confirmação do broker) | RN05, RQ04 | Tabela `outbox` + `OutboxRelay.java` |
+| **Publish/Subscribe** (a Inscrição publica eventos sem saber quem consome) | RQ03 | Exchange `eventhub.events` (RabbitMQ) |
+| **Consumidor idempotente** (mensagem repetida gera um único e-mail) | RN05 | `notification/app.py` (`event_id` único) |
+| **Idempotency-Key** (repetir o mesmo pedido não cria outra inscrição) | RN01 | Header `Idempotency-Key` na Inscrição |
+| **Dead Letter Queue** (fila à parte para mensagens que falharam) | RQ03 | Fila `notification.dlq` |
+| **Timeout** (2 s de espera máxima pelo Pagamento) | RQ03 | `PaymentClient.java` |
+| **Circuit Breaker** (abre após 5 falhas, recusa na hora por 15 s, depois testa: CLOSED → OPEN → HALF_OPEN) | RQ02, RQ03 | `CircuitBreaker.java` |
+| **Correlation ID** (mesmo identificador da requisição em todos os serviços e logs) | RQ06 | Header `X-Correlation-Id` → evento → logs |
+| **Projeção local** (cópia de capacidade e preço vindos do Catálogo) | RQ02 | Tabela `activity_seats` |
+| **Contratos explícitos** (OpenAPI para REST, envelope versionado para eventos) | RQ05 | `/docs` (FastAPI), `docs/openapi-registration.yaml`, `docs/eventos.md` |
+| **JWT** (token assinado com usuário e papel, validado em cada serviço) | RN07, RQ07 | `Jwt.java`, `catalog/app.py` |
+| **API Gateway simplificado** (entrada única; só roteia) | RQ08 | `web/nginx.conf` |
+| **Health check** (`/health` em todos os serviços) | RQ08 | `GET /health` |
 
-**Avaliados e não adotados:** *Two-Phase Commit* (trava todos os serviços se um falhar), *Saga coreografada* (espalharia o estado do pagamento entre serviços), *Event Sourcing* (sem necessidade de reconstruir histórico), *Service Discovery* (o DNS do Docker Compose já resolve os nomes).
+**Avaliados e não adotados:** Two-Phase Commit (bloqueia todos se um falhar), Saga coreografada (estado do pagamento espalhado), Event Sourcing (sem necessidade de histórico reconstruível) e Service Discovery (o DNS do Compose resolve).
 
 ### Requisito de qualidade → técnica
 
