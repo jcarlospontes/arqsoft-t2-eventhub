@@ -100,6 +100,22 @@
   .feed ul { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
   .feed li { display: grid; grid-template-columns: 62px 1fr; gap: 8px; font-size: 12.5px; padding: 5px 0; border-top: 1px solid #EEECE6; }
   .feed li.new { animation: flash 1.2s ease-out; }
+  /* ---------- aba "Painel ao vivo": monitor em tela cheia, 3 colunas, sem rolar a página ---------- */
+  .live-only { display: none; }
+  body.live-mode main { display: none; }
+  body.live-mode .monitor { display: grid; left: 0; width: auto; grid-template-columns: 1fr 1.35fr 1.15fr; gap: 24px; padding: 22px 28px; background: var(--paper); border-left: 0; }
+  body.live-mode .monitor > div { min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+  body.live-mode .live-only { display: block; }
+  body.live-mode .monitor h4 { font-size: 14px; }
+  body.live-mode .tile { font-size: 14px; padding: 10px 12px; } body.live-mode .tile b { font-size: 16px; }
+  body.live-mode #mon-tests .mrow { font-size: 15px; padding: 12px 14px; }
+  body.live-mode #mon-tests .mrow .name { font-size: 17px; }
+  body.live-mode #mon-tests .bar { height: 16px; }
+  body.live-mode #mon-tests .big { display: block; }
+  .mrow .big { display: none; font-size: 34px; font-weight: 700; line-height: 1.1; margin-top: 4px; }
+  body.live-mode .feed li { font-size: 14px; }
+  body.live-mode button.mon-toggle { display: none; }
+  @media (max-width: 1100px) { body.live-mode .monitor { grid-template-columns: 1fr; overflow-y: auto; } }
   @keyframes flash { from { background: var(--accent-soft); } to { background: transparent; } }
 </style>
 </head>
@@ -114,6 +130,7 @@
 <nav>
   <button class="active" data-tab="fluxo">Inscrição ao vivo</button>
   <button data-tab="apis">Serviços e APIs</button>
+  <button data-tab="live">Painel ao vivo</button>
 </nav>
 </div>
 
@@ -122,6 +139,10 @@
   <div>
     <h4>Serviços <span id="mon-cb"></span></h4>
     <div class="tiles" id="mon-services"></div>
+    <div class="live-only" style="margin-top:18px">
+      <h4>Atividades · vagas <span>fonte: Inscrição</span></h4>
+      <div id="mon-real"></div>
+    </div>
   </div>
   <div>
     <h4>Vagas ao vivo · testes <span>atualiza a cada 1 s</span></h4>
@@ -269,6 +290,8 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('active', x === b));
   $('tab-fluxo').classList.toggle('hidden', b.dataset.tab !== 'fluxo');
   $('tab-apis').classList.toggle('hidden', b.dataset.tab !== 'apis');
+  document.body.classList.toggle('live-mode', b.dataset.tab === 'live');
+  placeMonitor();
 });
 
 // ---------------------------------------------------------------- saúde dos serviços
@@ -469,6 +492,7 @@ $('rabbit-link').href = `http://${HOST}:15672`;
 function refreshAll() { loadActivities(); }
 // ---------------------------------------------------------------- painel de monitoramento
 const monOpen = () => document.body.classList.contains('mon-open');
+const liveMode = () => document.body.classList.contains('live-mode');
 function placeMonitor() { $('monitor').style.top = $('topbar').offsetHeight + 'px'; }
 $('mon-toggle').onclick = () => {
   document.body.classList.toggle('mon-open');
@@ -488,13 +512,19 @@ async function monitorTests() {
   const r = await call('GET', `${API.catalog}/activities`);
   if (!r.ok) { $('mon-tests').innerHTML = '<div class="small" style="color:var(--err)">Catálogo fora do ar</div>'; return; }
   const tests = r.data.filter(a => a.event_name === 'Teste')
-    .sort((x, y) => (y.created_at || '').localeCompare(x.created_at || '')).slice(0, 3);
+    .sort((x, y) => (y.created_at || '').localeCompare(x.created_at || '')).slice(0, liveMode() ? 4 : 3);
   if (!tests.length) return;
   const seats = await Promise.all(tests.map(a => call('GET', `${API.registration}/activities/${encodeURIComponent(a.id)}/seats`)));
+  const ago = (iso) => { const sec = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+    return sec < 60 ? `há ${sec} s` : sec < 3600 ? `há ${Math.round(sec / 60)} min` : `há ${Math.round(sec / 3600)} h`; };
   $('mon-tests').innerHTML = tests.map((a, i) => {
     const s = seats[i].ok ? seats[i].data : null;
-    return `<div class="mrow"><div class="name" title="${esc(a.title)}">${esc(a.title)}</div>${s ? `
+    const fresh = i === 0 && a.created_at && Date.now() - Date.parse(a.created_at) < 120000;
+    return `<div class="mrow" style="${fresh ? 'border:2px solid var(--accent);background:var(--accent-soft)' : i > 0 ? 'opacity:.75' : ''}">
+      <div class="row" style="justify-content:space-between;gap:8px;flex-wrap:nowrap"><div class="name" title="${esc(a.title)}">${esc(a.title)}</div>
+      <span class="small muted" style="white-space:nowrap">${fresh ? '<b style="color:var(--accent)">agora</b> · ' : ''}${a.created_at ? ago(a.created_at) : ''}</span></div>${s ? `
       <div class="bar"><div class="c" style="width:${100*s.confirmed/s.capacity}%"></div><div class="r" style="width:${100*s.reserved/s.capacity}%"></div></div>
+      <div class="big">${s.confirmed}<span class="muted" style="font-size:18px;font-weight:400"> / ${s.capacity} confirmadas</span></div>
       <div class="muted"><b style="color:var(--ink)">${s.confirmed}/${s.capacity}</b> confirmadas · ${s.reserved} reservadas · ${s.available} livres</div>`
       : '<div class="small" style="color:var(--err)">vagas indisponíveis (Inscrição fora)</div>'}</div>`;
   }).join('');
@@ -523,8 +553,19 @@ async function monitorFeed() {
   firstFeed = false;
 }
 
+function renderRealSeats() {
+  if (!liveMode()) return;
+  $('mon-real').innerHTML = activities.map(a => {
+    const s = a.seats;
+    return `<div class="mrow"><div class="name">${esc(a.title)}</div>${s ? `
+      <div class="bar"><div class="c" style="width:${100*s.confirmed/s.capacity}%"></div><div class="r" style="width:${100*s.reserved/s.capacity}%"></div></div>
+      <div class="muted"><b style="color:var(--ink)">${s.available} livres</b> · ${s.confirmed} confirmadas · ${s.reserved} reservadas</div>`
+      : '<div class="small" style="color:var(--err)">Inscrição fora do ar</div>'}</div>`;
+  }).join('');
+}
+
 (async function monitorLoop() {
-  if (monOpen()) { placeMonitor(); await Promise.all([monitorTests(), monitorFeed()]); }
+  if (monOpen() || liveMode()) { placeMonitor(); await Promise.all([monitorTests(), monitorFeed()]); renderRealSeats(); }
   setTimeout(monitorLoop, 1000);
 })();
 
@@ -533,7 +574,7 @@ pollHealth();
 setInterval(pollHealth, 2000);
 (async function seatsLoop() {
   await loadActivities();
-  setTimeout(seatsLoop, 3000);
+  setTimeout(seatsLoop, liveMode() ? 1000 : 3000);
 })();
 </script>
 </body>
